@@ -1,0 +1,634 @@
+package FinalProjectZhaoW;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.FileReader;
+import java.io.PrintWriter;
+import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.Random;
+
+import PaintZhaoW.LineDraw;
+import PaintZhaoW.WordBox;
+import javafx.animation.FadeTransition;
+import javafx.application.Application;
+import javafx.geometry.Insets;
+import javafx.scene.Node;
+import javafx.scene.Scene;
+import javafx.scene.control.Button;
+import javafx.scene.control.Label;
+import javafx.scene.control.TextField;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
+import javafx.scene.layout.FlowPane;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Pane;
+import javafx.scene.layout.VBox;
+import javafx.scene.media.AudioClip;
+import javafx.scene.paint.Color;
+import javafx.scene.shape.Rectangle;
+import javafx.scene.text.Font;
+import javafx.scene.text.FontWeight;
+import javafx.scene.text.Text;
+import javafx.scene.text.TextAlignment;
+import javafx.stage.Stage;
+import javafx.util.Duration;
+
+public class TwentyFortyEight extends Application {
+	// GLOBAL VARIABLES
+	private Scene scene;
+	private VBox root; // the overall layout is a VBox
+	private HBox topLine; // the very top line: 2048; current score; best score
+
+	private Text userFeedback; // text that outputs all the messages to the user
+	private HBox controlPane; // the buttons that the user selects
+	private Score score; // current score graphic
+	private Score best; // best score graphic
+	private int bestScorePrev = 0; // stores the value of the previous best score
+	
+	private static int numSquares = 4;
+	public static Pane gamePane; // the Pane of the board and the pieces
+	public static Cell[][] theGrid = new Cell[numSquares][numSquares]; // backend of things: the 4x4 grid of Tiles
+	public static LinkedList<Cell> cellList; // list of all the active Cell objects
+	
+	private static Random randy;
+	private boolean keepPlaying = true;
+	
+	public static final int WIDTH = 80; // width and height of a tile
+	public static final int HEIGHT = 80;
+	
+	private static final String CLICK = "click.wav"; // plays when a move is made
+	private static final String DING = "ding.wav"; // plays when the game has been won
+	private static final String BUZZ = "buzz.mp3"; // plays when the game has been lost
+	private static final String THUD = "thud.wav";
+	
+	private Color grey = Color.web("#bbada0"); // grey
+	private Color lightGrey = Color.web("#cdc1b5"); // light grey
+	
+	private AudioClip clickSound;
+	private AudioClip dingSound; // plays this sound when you win
+	private AudioClip buzzSound; // plays this sound when you lose :(
+	private AudioClip thudSound;
+	
+	private static final String HIGH_SCORE = "2048HighScore.txt";
+	private static final String SAVED_GAME = "2048.txt"; // a saved game as a file
+	
+	public static void main(String[] args) {
+		launch(args);
+	}
+	
+	public void start(Stage stage) {
+		root = new VBox();
+		scene = new Scene(root,410,520);
+		stage.setScene(scene);
+		stage.setTitle("FinalProjectZhaoW: 2048");
+		stage.show();
+		randy = new Random();
+		
+		setUpGamePanel(); // set up the top 3 panels: topLine, userFeedback Text, controlPane
+		createBoard(); // create the board visual
+		setUpSound(); // intialize all the sounds
+	}
+	
+	// sets up the game controls and instructions
+	public void setUpGamePanel() {
+		cellList = new LinkedList<>();
+		root.setPadding(new Insets(10,0,0,20));
+		topLine = new HBox(); // first horizontal row (2048; current score; best score)
+		//topLine = new Pane();
+		Text game = new Text("2048");
+		Font gameFont = Font.font("Arial", FontWeight.EXTRA_BOLD, 50);
+		game.setFocusTraversable(true);
+		game.setFont(gameFont);
+		game.setFill(Color.DARKSLATEGRAY);
+		//game.setLayoutX(0); game.setLayoutY(0);
+		topLine.getChildren().add(game);
+		root.getChildren().add(topLine);
+		
+		BufferRectangle br1 = new BufferRectangle(50,25);
+		topLine.getChildren().add(br1);
+		
+		// set up the scoreboards
+		score = new Score("SCORE");
+		topLine.getChildren().add(score); // TODO: how to add padding here?
+		BufferRectangle br2 = new BufferRectangle(5,25);
+		topLine.getChildren().add(br2);
+		best = new Score("BEST"); 
+		topLine.getChildren().add(best);
+		readBestScore();
+		
+		// set up the userFeedback Text
+		Font feedbackFont = Font.font("Arial", FontWeight.BOLD, 15);
+		userFeedback = new Text("Welcome to 2048! Start a new game or load one?"); // Instructions: Use arrow keys to add Tiles to create 2048!
+		userFeedback.setFocusTraversable(true);
+		userFeedback.setFill(Color.DARKSLATEGRAY);
+		userFeedback.setFont(feedbackFont);
+		root.getChildren().add(userFeedback);
+		
+		// set up the controlPane (where the buttons will appear)
+		controlPane = new HBox(); // second horizontal row
+		controlPane.setPadding(new Insets(10,10,10,0));
+		root.getChildren().add(controlPane);
+		
+		// all the buttons that will go on the controlPane
+		// 1. Create new game; 2. Load a game; 3. Save the game to a file; 4. Reset the game
+		ControlButton createNewGame = new ControlButton("Create New Game"); // create a new game button
+		controlPane.getChildren().add(createNewGame);
+		BufferRectangle br3 = new BufferRectangle(5,25); // add a buffer between the buttons
+		controlPane.getChildren().add(br3);
+		ControlButton loadGame = new ControlButton("Load Game"); // load a game button
+		controlPane.getChildren().add(loadGame);
+		ControlButton saveGame = new ControlButton("Save Game"); // save game button
+		ControlButton resetGame = new ControlButton("Reset Game"); // reset game button
+		BufferRectangle br4 = new BufferRectangle(5,25);
+		
+		// set up action events for the 4 buttons
+		createNewGame.setOnAction(e->{
+			setUpNewGame();
+			updateControlPane(createNewGame,br3,loadGame,resetGame,br4,saveGame,"New game created! Use WASD as controls.");
+		});
+		loadGame.setOnAction(e->{
+			loadGame();
+			updateControlPane(createNewGame,br3,loadGame,resetGame,br4,saveGame,"New game loaded! Use WASD as controls.");
+		});
+		resetGame.setOnAction(e->{reset(); thudSound.play();});
+		saveGame.setOnAction(e ->{saveGameToFile(); thudSound.play();});
+	}
+	
+	// adds and removes stuff to the controlPane, updates the userFeedback text
+	public void updateControlPane(ControlButton cb1,BufferRectangle br1,ControlButton cb2,ControlButton cb3,BufferRectangle br2,ControlButton cb4,String msg) {
+		controlPane.getChildren().remove(cb1); // remove the create new game and load game buttons, add in the reset and save game buttons
+		fadeTransition(1,0,.75,cb1).play(); // add animations for fade in/fade out
+		controlPane.getChildren().remove(br1);
+		controlPane.getChildren().remove(cb2);
+		fadeTransition(1,0,.75,cb2).play();
+		controlPane.getChildren().add(cb3);
+		fadeTransition(0,1,.75,cb3).play();
+		controlPane.getChildren().add(br2);
+		controlPane.getChildren().add(cb4);
+		fadeTransition(0,1,.75,cb4).play();
+		thudSound.play();
+		userFeedback.setText(msg); // change the userFeedback message
+	}
+	
+	// function for making the FadeTransitions for the controlPanel buttons
+	public FadeTransition fadeTransition(int a, int b, double duration, ControlButton cb) {
+		FadeTransition ft = new FadeTransition(Duration.seconds(duration),cb);
+		ft.setFromValue(a);
+		ft.setToValue(b);
+		return ft;
+	}
+	
+	// creates the board (visual stuff)
+	public void createBoard() {
+		gamePane = new Pane(); // initialize the gamePane
+		root.getChildren().add(gamePane);
+		gamePane.setPrefSize(500, 500);
+		Rectangle board = new Rectangle(0,0,370,370); // create the back of the board
+		board.setFill(grey); // set the color
+		board.setArcHeight(10);
+		board.setArcWidth(10);
+		gamePane.getChildren().add(board);
+		
+		// create the tiles
+		int xCounter = 10;
+		for (int i = 0; i < 4; i++) { // loop through the horizontal tiles
+			int yCounter = 10;
+			for (int j = 0; j < 4; j++) { // loop through the vertical tiles
+				Rectangle blankTile = new Rectangle(0,0,WIDTH,HEIGHT); // create the tiles in the back
+				blankTile.setArcHeight(10);
+				blankTile.setArcWidth(10);
+				blankTile.setFill(lightGrey); // set the color of the blank tile
+				blankTile.setX(i * WIDTH + xCounter);
+				blankTile.setY(j * HEIGHT + yCounter);
+				gamePane.getChildren().add(blankTile); // add to gamePane
+				yCounter += 10;
+			}
+			xCounter += 10;
+		}
+		updateTheGrid();
+	}
+
+	// sets up the sounds: click (pieces move), ding (win), and buzz (loss)
+	public void setUpSound() {
+		clickSound = sound(CLICK);
+		dingSound = sound(DING);
+		buzzSound = sound(BUZZ);
+		thudSound = sound(THUD);
+	}
+	
+	// function to make initializing AudioClips faster and more compact
+	public AudioClip sound(String fileName) {
+		File tempFile = new File(fileName);
+		String tempSound = tempFile.toURI().toString();
+		AudioClip ac = new AudioClip(tempSound);
+		ac.setVolume(.6);
+		return ac;
+	}
+	
+	// sets up the pieces and the control
+	// create new game calls this function
+	public void setUpNewGame() {
+		for (int i = 0; i < 2; i++) { // spawn 2 Cells
+			spawn();
+		}
+		setWASD();
+	}
+	
+	// Loading a game from a file
+	public void loadGame() {
+		readGameFromFile(); // read the file
+		setWASD(); // allow WASD to work
+		updateScore(); // update the score
+		checkWinLose(); // check win/loss!
+	}
+	
+	// sets the scene key handler --> allows WASD to move the tiles
+	public void setWASD() {
+		scene.addEventHandler(KeyEvent.KEY_PRESSED, ke -> {
+			if (keepPlaying) {
+				switch (ke.getCode()) {
+				case W:
+					for (int y = 0; y < 4; y++) { // check the top row first, then check the next one down
+						upDownWASD(y,true);
+					}
+					doEveryMove();
+					break;
+				case S:
+					for (int y = 3; y > -1; y--) { // start looping from the bottom (move files on the very bottom
+						upDownWASD(y,false);
+					}
+					doEveryMove();
+					break;
+				case D:
+					for (int x = 3; x > -1; x--) { // start looping from the right (move files on the far right FIRST)
+						rightLeftWASD(x,true);
+					}
+					doEveryMove();
+					break;
+				case A:
+					for (int x = 0; x < 4; x++) { // start looping from the left (move files on the far left FIRST)
+						rightLeftWASD(x,false);
+					}
+					doEveryMove();
+					break;
+				}
+			}
+		});
+	}
+	
+	// call this function when moving Up or Down
+	public void upDownWASD(int y, boolean up) {
+		for (int x = 0; x < 4; x++) { // loop through all the Cells in that row
+			if (theGrid[x][y] != null) { // if there is a Cell there (it's not null...) then move it up
+				Cell c = theGrid[x][y];
+				if (up) {
+					c.moveUp(); // this way, it updates all the Cells at the top first,
+				} else {
+					c.moveDown();
+				}
+				updateTheGrid(); // need to updateTheGrid everytime for the next cells in that column
+			}
+		}
+	}
+
+	// call this function when moving Right or Left
+	public void rightLeftWASD(int x, boolean right) {
+		for (int y = 0; y < 4; y++) {
+			if (theGrid[x][y] != null) {
+				Cell c = theGrid[x][y];
+				if (right) {
+					c.moveRight();
+				} else {
+					c.moveLeft();
+				}
+				updateTheGrid();
+			}
+		}
+	}
+	
+	// do this every move everytime a key is pressed: 
+	// check for win/loss
+	// print the gridTest on the console to visualize the backend of the program
+	// update the scoreboard
+	public void doEveryMove() {
+		checkWinLose(); // check for win/loss
+		if (keepPlaying) {
+			spawn(); // generate a new Cell on the board
+			//System.out.println("spawn");
+		}
+		printGridTest(); // print the grid to the console
+		updateScore(); // update the score to the score board
+		clickSound.play(); // play a click sound
+	}
+	
+	// updates the grid values (must do this everytime a Cell moves!)
+	public static void updateTheGrid() {
+		for (int i = 0; i < 4; i++) { // erase the values in the grid
+			for (int j = 0; j < 4; j++) {
+				theGrid[i][j] = null;
+			}
+		}
+		for (Cell c : cellList) { // reset thats in the grid
+			int x = c.getGridX();
+			int y = c.getGridY();
+			theGrid[x][y] = c;
+			//System.out.println(c.getNum() + ", x="+ x + " y =" + y);
+		}
+	}
+	
+	// When two tiles that have the same number overlap with each other, this function gets rid of both of them and adds the next
+	// tile in its place
+	// parameters: 
+	// elimX and elimY: the x/y coordinates that are being eliminated
+	// newNum: the new number that gets created at that coordinate
+	public static void eliminate(int elimX, int elimY, int newNum) { // gets called when two numbers merge together to form the next number
+		Cell oldTile = theGrid[elimX][elimY];
+		gamePane.getChildren().remove(oldTile); // remove the old number from the window
+		cellList.remove(oldTile);
+		theGrid[elimX][elimY] = null; // remove the older number from the grid
+		Cell newTile = new Cell(elimX,elimY,newNum); // create a new number at that same spot
+		theGrid[elimX][elimY] = newTile;
+		cellList.add(newTile);
+		gamePane.getChildren().add(newTile); // add that new number to the gamePane
+		updateTheGrid();
+	}
+	
+	// creates new Cell objects and puts them on the board
+	public static void spawn() {
+		boolean keepGoing = true;
+		while (keepGoing) { // keep doing this until you generate coordinates where there is a Cell vacancy
+			int rand1 = randy.nextInt(4); // generate two random numbers from 1-4
+			int rand2 = randy.nextInt(4);
+			if (theGrid[rand1][rand2] == null) { // check if at those coordinates, there is a vacancy
+				double rand = Math.random();
+				int spawnNum = 2; // 70% chance that the number is 4, 30% chance that it is a 2
+				if (rand < .3) {
+					spawnNum = 4;
+				}
+				Cell spawnTile = new Cell(rand1, rand2, spawnNum);
+				FadeTransition ft = new FadeTransition(Duration.seconds(.25),spawnTile); // fade in
+				ft.setFromValue(0);
+				ft.setToValue(1);
+				gamePane.getChildren().add(spawnTile); // add new Cell object to the gamePane, 
+				theGrid[rand1][rand2] = spawnTile;
+				cellList.add(spawnTile);
+				ft.play();
+				keepGoing = false;
+			}
+		}
+	}
+	
+	// updates the score by just summing up all the Cells' numbers
+	public void updateScore() {
+		int sum = 0;
+		for (Cell c : cellList) {
+			sum += c.getNum();
+		}
+		score.setTextNum(sum); // change the scoreboard
+	}
+	
+	// checks if the game has been won or loss, is called every time that a key is pressed
+	public void checkWinLose() {
+		// check for a win
+		for (Cell c : cellList) {
+			if (c.getNum() == 2048) { // if there is a single Cell object whose number is 2048, then they win!
+				keepPlaying = false;
+				userFeedback.setText("Congrats! You win!"); // update the userFeedback Text
+				dingSound.play(); // plays the ding sound
+				writeBestScore(); // save the final score to a .txt file
+				if (score.getNumber() > bestScorePrev) {
+					best.setTextNum(score.getNumber()); // set the text to the high score
+					bestScorePrev = score.getNumber();
+				}
+			}
+		}
+		// check for a loss
+		int counter = 0; // counts the number of times adjacent Tiles don't match. If there are 24 counts, then that means that they are stuck the game is over
+		for (int x = 0; x < 3; x++) { // sweep through left to right
+			for (int y = 0; y < 4; y++) {
+				if (theGrid[x][y] != null && theGrid[x+1][y] != null) { // checks that there are 2 horizontally adjacent cells
+					if (theGrid[x][y].getNum() != theGrid[x+1][y].getNum()){ // if the two numbers aren't the same, add to the counter
+						counter ++;
+					}
+				}
+			}
+		}
+		for (int y = 0; y < 3; y++) { // sweep through top to bottom. pretty much do the same thing as above
+			for (int x = 0; x < 4; x++) {
+				if (theGrid[x][y] != null && theGrid[x][y+1] != null) {
+					if (theGrid[x][y].getNum() != theGrid[x][y+1].getNum()){
+						counter ++;
+					}
+				}
+			}
+		}
+	//	System.out.println("Counter = " + counter);
+		if (counter == 24) { // if the number of adacent Cells whose numbers aren't the same adds up to 24, that means that they lose :(
+			keepPlaying = false;
+			userFeedback.setText("You lose...better luck next time!!"); // update userFeedback text
+			buzzSound.play(); // play the buzz sound to indicate a loss
+			writeBestScore(); // write the best score to the file
+			if (score.getNumber() > bestScorePrev) {
+				best.setTextNum(score.getNumber()); // set the text to the high score
+				bestScorePrev = score.getNumber();
+			}
+		}
+	}
+	
+	// resets the board 
+	public void reset() {
+		score.setTextNum(0); // set the score back to 0
+		for (int i = 0; i < 4; i++) { // erase the values in the grid
+			for (int j = 0; j < 4; j++) {
+				theGrid[i][j] = null; // set all theGrid values to null
+			}
+		}
+		for (Cell c : cellList) { // remove every Cell from the gamePane
+			gamePane.getChildren().remove(c);
+		}
+		cellList.clear(); // delete everything in the Cell list
+		//System.out.println(cellList);
+		userFeedback.setText("Game reset! Use WASD as controls.");
+		keepPlaying = true;
+		for (int i = 0; i < 2; i++) {
+			spawn(); // spawn two new cells
+		}
+	}
+	
+	// prints to the console what is on theGrid (behind the scenes)
+	// really helped when coding this game!
+	public void printGridTest() {
+		for (int y = 0; y < 4; y++) {
+			for (int x = 0; x < 4; x++) {
+				String s = "0"; // print a 0 if there is nothing there
+				if (theGrid[x][y] != null) {
+					s = "" + theGrid[x][y].getNum(); // if there is something there, print its number to the console
+				}
+				System.out.print(s + "  ");
+			}
+			System.out.println();
+		}
+		//System.out.println("x=" + cellList.get(0).getLayoutX() + "y=" + cellList.get(0).getLayoutY()); // print out all the Cells and their coordinates
+		System.out.println();
+	}
+	
+	// saves whatever is on the board to 2048.txt
+	public void saveGameToFile() {
+		System.out.println("Saving file...");
+		userFeedback.setText("Game saved! Use WASD as controls.");
+		try {
+			FileOutputStream fos = new FileOutputStream(SAVED_GAME);
+			PrintWriter pw = new PrintWriter(fos);
+			for (Cell c : cellList) { // saving all the LineDraw objects
+				int x = c.getGridX();
+				int y = c.getGridY();
+				int num = c.getNum();
+				pw.println(num + "\t" + x + "\t" + y);
+			}
+			pw.close();
+		} catch (FileNotFoundException e) {
+			e.printStackTrace();
+		}
+	}
+	
+	// read what is from the file, put it on the board
+	public void readGameFromFile() {
+		System.out.println("Loading a file...");
+		try {
+			String line = "";
+			FileReader input = new FileReader(SAVED_GAME);
+			BufferedReader br = new BufferedReader(input);
+			while ((line = br.readLine()) != null) {
+				String[] values = line.split("\t");
+				int number = Integer.parseInt(values[0]);
+				int gridX = Integer.parseInt(values[1]);
+				int gridY = Integer.parseInt(values[2]);
+				Cell newCell = new Cell(gridX, gridY, number);
+				cellList.add(newCell);
+				theGrid[gridX][gridY] = newCell;
+				
+				gamePane.getChildren().add(newCell);
+			}
+		} catch (Exception e) { // catch the Exception
+			e.printStackTrace();
+		}
+	}
+	
+	// prints the final score out to a file, so it can be read back in 
+	public void writeBestScore() {
+		System.out.println("Writing a file...");
+		try {
+			FileOutputStream fos = new FileOutputStream(HIGH_SCORE);
+			PrintWriter pw = new PrintWriter(fos);
+			if (score.getNumber() > bestScorePrev) {
+				pw.print(score.getNumber());
+			} else {
+				pw.print(bestScorePrev);
+			}
+			pw.close();
+			System.out.println(HIGH_SCORE);
+		} catch (FileNotFoundException e) {
+			e.printStackTrace();
+		}
+	}
+	
+	// reads the previous best score from the file
+	public void readBestScore() {
+		try {
+			String line = "";
+			FileReader input = new FileReader(HIGH_SCORE);
+			BufferedReader br = new BufferedReader(input);
+			while((line = br.readLine()) != null) {
+				String[] values = line.split("\t");
+				int highScore = Integer.parseInt(values[0]);
+				best.setTextNum(highScore); // set the text to the high score
+				bestScorePrev = highScore;
+			} 
+		} 
+		catch (FileNotFoundException e) {
+			best.setTextNum(0);
+		}
+		catch (Exception e) { // catch the Exception
+			e.printStackTrace();
+		}
+	}
+	
+	// class for the current score and best score panel
+	public class Score extends Pane{
+		private Rectangle background;
+		private Text label;
+		private Text num;
+		private int width = 100;
+		private int height = 50;
+		
+		public Score(String s) {
+			super();
+			setBackground();
+			setTextElements(s);
+		}	
+		
+		// set up the background of the current/best score
+		public void setBackground() {
+			setPrefSize(width,height); // set the size of the Score window
+			background = new Rectangle(0,0,width,height);
+			background.setFill(Color.GRAY);
+			background.setArcWidth(10); background.setArcHeight(10);
+			getChildren().add(background);
+		}
+		
+		// set up the text elements: Current Score/Best Score and the number
+		public void setTextElements(String s) {
+			// the top line text:
+			label = new Text(s);
+			label.setX(25); label.setY(20);
+			label.setFill(Color.LIGHTGRAY);
+			Font labelFont = Font.font("Arial", FontWeight.EXTRA_BOLD, 15);
+			label.setFont(labelFont);
+			getChildren().add(label);
+			
+			// the number that goes with it
+			num = new Text("0");
+			num.setX(25); num.setY(40);
+			num.setFill(Color.WHITE);
+			Font numFont = Font.font("Arial", FontWeight.EXTRA_BOLD, 20);
+			num.setFont(numFont);
+			getChildren().add(num);	
+			
+			// accessibility stuff
+			label.setFocusTraversable(true);
+			num.setFocusTraversable(true);
+		}
+		
+		// getters and setters
+		public Text getLabel() { return this.label; } // get the label
+		public void setLabelText(String s) { this.label.setText(s); } // set the label 
+		
+		public Text getTextNum() { return this.num; } // get the number as a Text
+		public int getNumber() { return Integer.parseInt(this.num.getText()); } // get the number as an integer
+		public void setTextNum(int i) { this.num.setText("" + i); } // set the number to a value
+	}
+	
+	// class for the Buttons that will appear in the controlPannel HBox
+	// purpose: to keep them all uniform in appearance
+	public class ControlButton extends Button {
+		public ControlButton(String s) {
+			super(s);
+			Font font = Font.font("Arial", FontWeight.BOLD, 15);
+			this.setFont(font);
+			this.setTextFill(Color.WHITE);
+			this.setStyle("-fx-background-color: #808080; ");
+	        this.setAccessibleText("This button does " + s);
+		}
+	}
+	
+	// rectangles only used for providing spacing
+	public class BufferRectangle extends Rectangle {
+		public BufferRectangle(double width, double height) {
+			super(width,height);
+			this.setFill(Color.TRANSPARENT);
+		}
+	}
+}
