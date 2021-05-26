@@ -1,0 +1,199 @@
+package FinalProjectZhaoW;
+
+import javafx.animation.TranslateTransition;
+import javafx.scene.layout.StackPane;
+import javafx.scene.paint.Color;
+import javafx.scene.shape.Rectangle;
+import javafx.scene.text.Font;
+import javafx.scene.text.FontWeight;
+import javafx.scene.text.Text;
+import javafx.util.Duration;
+
+public class Cell extends StackPane{
+	
+	protected Text t; // the number of the Cell
+	protected Rectangle r; // outer rectangle
+	protected int width = TwentyFortyEight.WIDTH; // dimensions of the Cell 
+	protected int height = TwentyFortyEight.HEIGHT;
+	protected int gridX; // x and y coordinates of the grid
+	protected int gridY;
+	private int number;
+	private Cell[][] masterGrid = TwentyFortyEight.theGrid; // every Cell object has access to the overall grid
+
+	public Cell(int gridX, int gridY, int number) {
+		this.gridX = gridX;
+		this.gridY = gridY;
+		this.number = number;
+		setUpAppearance();
+		updateAccessibleText();
+		setPastel(); // set the color upon initializing
+		setCoordinates();
+		getChildren().addAll(r,t); // add the box and the text to the StackPane, with the text on top
+	}
+	
+	//GETTERS AND SETTERS
+	public void setGridX(int x) { this.gridX = x; }
+	public void setGridY(int y) { this.gridX = y; }
+
+	public int getGridX() { return this.gridX; }
+	public int getGridY( ) { return this.gridY; }
+	
+	public int getNum() { return this.number; } // returns what number each Cell is
+	public void setNum(int number) { this.number = number; }
+
+	public void setText(int i) { this.t.setText("" + i);}
+	
+	public void setUpAppearance() {
+		this.setPrefSize(width,height);
+		this.r = new Rectangle(0,0,width,height);
+		this.r.setArcHeight(10);
+		this.r.setArcWidth(10);
+		this.t = new Text(""+this.number);
+		Font labelFont = Font.font("Arial", FontWeight.EXTRA_BOLD, 40);
+		this.t.setFont(labelFont);
+		this.t.setFocusTraversable(true);
+	}
+	
+	// MOVEMENT, called by main program
+	public void moveUp() {
+		upDown(-1,0);
+	}
+	
+	public void moveDown() {
+		upDown(1,3);
+	}
+	
+	public void moveRight() {
+		rightLeft(1,3);
+	}
+	
+	public void moveLeft() {
+		rightLeft(-1,0);
+	}
+	
+	//sets the coordinates of the Cell based on the indices, will call this everytime a new Cell is created/updated
+	public void setCoordinates() {
+		int x = this.gridX * width + this.gridX * 10 + 10;
+		int y = this.gridY * height + this.gridY * 10 + 10;
+		this.setLayoutX(x);
+		this.setLayoutY(y);
+	}
+	
+	// eliminates two Cells and creates a new one
+	public void doElim() {
+		TwentyFortyEight.eliminate(this.gridX, this.gridY, this.number * 2);
+		masterGrid[this.gridX][this.gridY] = null;
+		TwentyFortyEight.cellList.remove(this);
+		TwentyFortyEight.gamePane.getChildren().remove(this);
+	}
+	
+	// update the accessible text every time a piece is moved
+	public void updateAccessibleText() {
+		this.t.setAccessibleText("Number: " + this.number + ", X coordinate: " + this.gridX + ", Y coordinate: " + this.gridY);
+	}
+	
+	// ANIMATING MOVEMENT FUNCTIONS
+	// animating up and down movements
+	public void animateUpDown(int j) {
+		int oldY = this.gridY * height + this.gridY * 10 + 10;
+		this.gridY = this.gridY + j; // update the grid y position
+		int newY = this.gridY * height + this.gridY * 10 + 10;
+		TranslateTransition tt = new TranslateTransition(Duration.seconds(.25),this);
+		tt.setByX(0); // don't change the x value
+		tt.setByY(newY-oldY); // change y value by difference of new and old coordinates
+		tt.play();
+		tt.setOnFinished(e->{
+			tt.setNode(null);
+			this.setTranslateX(0);
+			this.setTranslateY(0);
+			setCoordinates();
+		});
+	}
+	
+	// animating right and left movements
+	public void animateRightLeft(int i) {
+		int oldX = this.gridX * height + this.gridX * 10 + 10;
+		this.gridX = this.gridX + i;
+		int newX = this.gridX * height + this.gridX * 10 + 10;
+		TranslateTransition tt = new TranslateTransition(Duration.seconds(.25),this);
+		tt.setByX(newX-oldX); // change x value by difference of new and old coordinates
+		tt.setByY(0); // don't change the y value
+		tt.play();
+		tt.setOnFinished(e->{
+			tt.setNode(null);
+			this.setTranslateX(0);
+			this.setTranslateY(0);
+			setCoordinates();
+		});		
+	}
+	
+	// GENERATING MOVEMENT FUNCTIONS
+	// move either up or down
+	public void upDown(int j, int boundary) {
+		if (this.gridY != boundary) { // if the Cell is not at the very tp
+			while (masterGrid[this.gridX][this.gridY+j] == null || masterGrid[this.gridX][this.gridY+j].getNum() == this.number) { // look at the Cell above you. Is it empty? if so, keep moving up!
+				if (masterGrid[this.gridX][this.gridY+j] != null && masterGrid[this.gridX][this.gridY+j].getNum() == this.number) { // check if the Cell above you is not null, and if it isn't then if its the same number					
+					animateUpDown(j); // animate this movement
+					doElim(); // eliminate two Cells that have the same number, generate the next Cell that will take their place
+				}
+				else {
+					animateUpDown(j); // animate this movement
+				}
+				if (this.gridY == boundary) { // if the y coordinate is at the passed in boundary value, break the loop!
+					break;
+				}
+			}
+		}
+		updateAccessibleText(); // update the accessible text for each Cell
+	}
+	
+	// move right or left
+	public void rightLeft(int i, int boundary) {
+		if (this.gridX != boundary) {
+			while (masterGrid[this.gridX+i][this.gridY] == null || masterGrid[this.gridX+i][this.gridY].getNum() == this.number) {
+				if (masterGrid[this.gridX+i][this.gridY] != null && masterGrid[this.gridX+i][this.gridY].getNum() == this.number) { // check if the Cell above you is not null, and if it isn't then if its the same number					
+					animateRightLeft(i); // animate this movement
+					doElim(); // eliminate two Cells that have the same number, generate the next Cell that will take their place
+				}
+				else {
+					animateRightLeft(i); // animate this movement
+				}
+				if (this.gridX == boundary) { // if the x coordinate is at the passed in boundary value, break the loop!
+					break;
+				}
+			}
+		}
+		updateAccessibleText(); // update the accessible text for each Cell
+	}
+	
+	// fill the background of the Cell based on what number it is
+	// values taken from an online eye dropper to hexcode tool
+	public void setPastel() {
+		if (this.number == 2) { fill("#eee4da"); }
+		else if (this.number == 4) { fill("#ece0c8"); }
+		else if (this.number == 8) { fill("#f1b077"); }
+		else if (this.number == 16) { fill("#eb8c52"); }
+		else if (this.number == 32) { fill("#ef7b60"); }
+		else if (this.number == 64) { fill("#e95937"); }
+		else if (this.number == 128) { fill("#f2d86a"); }
+		else if (this.number == 256) { fill("#edcc63"); }
+		else if (this.number == 512) { fill("#e3c02b"); }
+		else if (this.number == 1024) { fill("#e0b915"); }
+		else if (this.number == 2048) { fill("#ecc400"); }
+		setTextColor();
+	}
+	
+	public void fill(String s) { // fill the Rectangle color based on a HEX Code (in junction with the setPastel() function)
+		this.r.setFill(Color.web(s));
+	}
+	
+	// fill the text color of the cell based on what number it is
+	public void setTextColor() {
+		if (this.number == 2 || this.number == 4) { this.t.setFill(Color.web("#776d64")); } // change the text color to white only if the number is not 2 or 4
+		else { this.t.setFill(Color.WHITE); }
+		if (this.number == 1024 || this.number == 2048) { // change the size of the font if the number is 4 digits (1024 or 2048)
+			Font smallerFont = Font.font("Arial", FontWeight.EXTRA_BOLD, 30);
+			this.t.setFont(smallerFont);
+		}
+	}
+}
